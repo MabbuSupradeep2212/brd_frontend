@@ -12,9 +12,10 @@ export interface Message {
 
 interface ChatMessageProps {
   message: Message;
+  isDarkMode?: boolean;
 }
 
-const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
+const ChatMessage: React.FC<ChatMessageProps> = ({ message, isDarkMode = false }) => {
   const [copied, setCopied] = useState(false);
 
   const copyToClipboard = async (text: string) => {
@@ -38,7 +39,11 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
   const isBot = message.type === 'bot';
 
   return (
-    <div className={`flex gap-4 p-4 ${isBot ? 'bg-gray-50/50' : 'bg-white'} transition-all duration-200 hover:bg-opacity-80`}>
+    <div className={`flex gap-4 p-4 ${
+      isDarkMode
+        ? isBot ? 'bg-gray-800/50' : 'bg-gray-800'
+        : isBot ? 'bg-gray-50/50' : 'bg-white'
+    } transition-all duration-200 hover:bg-opacity-80`}>
       <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
         isBot 
           ? 'bg-gradient-to-r from-blue-600 to-indigo-600' 
@@ -53,15 +58,15 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
-          <span className="font-medium text-gray-900">
+          <span className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
             {isBot ? 'BRD Assistant' : 'You'}
           </span>
-          <span className="text-xs text-gray-500">
+          <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
             {formatTime(message.timestamp)}
           </span>
         </div>
 
-        <div className="prose prose-sm max-w-none">
+        <div className={`prose prose-sm max-w-none ${isDarkMode ? 'prose-invert' : ''}`}>
           {message.isCode ? (
             <div className="relative bg-gray-900 rounded-lg p-4 mt-2">
               <button
@@ -76,7 +81,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
               </pre>
             </div>
           ) : (
-            <div className="text-gray-700 leading-relaxed whitespace-pre-wrap">
+            <div className={`leading-relaxed whitespace-pre-wrap ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               {message.content}
             </div>
           )}
