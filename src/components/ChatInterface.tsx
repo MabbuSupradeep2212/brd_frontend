@@ -1,10 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Download, Trash2, Code, FileText, Sparkles, Moon, Sun, MessageSquare, X, PlusCircle } from 'lucide-react';
+import { Send, Download, Trash2, Code, FileText, Sparkles, Moon, Sun, MessageSquare, X, PlusCircle, Upload, FileUp } from 'lucide-react';
 import ChatMessage, { Message } from './ChatMessage';
 
 interface ChatInterfaceProps {
   username: string;
   onLogout: () => void;
+}
+
+interface AnalysisResponse {
+  download_url: string;
+  message: string;
+  response: string;
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ username, onLogout }) => {
@@ -29,8 +35,11 @@ How can I assist you today?`,
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [outputFormat, setOutputFormat] = useState<'json' | 'pdf' | 'word' | 'image'>('pdf');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -128,13 +137,20 @@ Could you please provide more details about your specific needs? For example:
 The more context you provide, the better I can assist you!`;
   };
 
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setSelectedFile(file);
+    }
+  };
+
   const handleSendMessage = async () => {
-    if (!inputValue.trim()) return;
+    if ((!inputValue.trim() && !selectedFile) || isTyping) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
       type: 'user',
-      content: inputValue,
+      content: inputValue + (selectedFile ? `\nFile: ${selectedFile.name}` : ''),
       timestamp: new Date(),
     };
 
@@ -142,22 +158,49 @@ The more context you provide, the better I can assist you!`;
     setInputValue('');
     setIsTyping(true);
 
-    // Simulate typing delay
-    setTimeout(() => {
-      const botResponse = generateBotResponse(inputValue);
-      const isCode = botResponse.includes('```');
+    try {
+      const formData = new FormData();
+      formData.append('content', inputValue || 'analyse the brd');
+      formData.append('output_format', outputFormat);
       
+      if (selectedFile) {
+        const fileType = selectedFile.name.toLowerCase().endsWith('.pdf') ? 'pdf' : 'word';
+        formData.append(fileType, selectedFile);
+      }
+
+      const response = await fetch('http://185.136.233.87:9091/chat', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: 'bot',
-        content: isCode ? botResponse.replace(/```\w*\n?/g, '').replace(/```/g, '') : botResponse,
+        content: data.response,
         timestamp: new Date(),
-        isCode: isCode,
+        downloadUrl: data.download_url,
+        imageUrl: data.image_url,
       };
 
       setMessages(prev => [...prev, botMessage]);
+      setSelectedFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } catch (error) {
+      console.error('Error analyzing BRD:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        type: 'bot',
+        content: 'Sorry, there was an error analyzing the document. Please try again.',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
       setIsTyping(false);
-    }, 1500);
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -356,38 +399,80 @@ How can I assist you today?`,
             </div>
           </div>
 
-          {/* Input */}
+          {/* Input Section */}
           <div className={`border-t ${isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'} p-4`}>
             <div className="max-w-4xl mx-auto">
-              <div className="flex gap-4">
-                <div className="flex-1 relative">
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    placeholder="Ask me about BRD requirements, improvements, or request code generation..."
-                    className={`w-full px-4 py-3 pr-12 rounded-xl ${
-                      isDarkMode 
-                        ? 'bg-gray-700 border-gray-600 text-gray-200 placeholder-gray-400 focus:border-blue-500' 
-                        : 'bg-white border-gray-300 focus:border-blue-500'
-                    } focus:ring-4 focus:ring-blue-500/20 focus:outline-none transition-all duration-200`}
-                    disabled={isTyping}
-                  />
-                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex gap-1">
-                    <FileText className={`w-4 h-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-400'}`} />
-                    <Code className={`w-4 h-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-400'}`} />
+              <div className="flex flex-col gap-4">
+                {/* File Upload and Format Selection */}
+                <div className="flex items-center gap-4">
+                  <div className="flex-1 flex items-center gap-4">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".pdf,.doc,.docx"
+                      onChange={handleFileChange}
+                      className="hidden"
+                      id="file-upload"
+                    />
+                    <label
+                      htmlFor="file-upload"
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer ${
+                        isDarkMode
+                          ? 'bg-gray-700 hover:bg-gray-600 text-gray-200'
+                          : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                      }`}
+                    >
+                      <FileUp className="w-4 h-4" />
+                      {selectedFile ? selectedFile.name : 'Upload PDF/Word'}
+                    </label>
+
+                    <select
+                      value={outputFormat}
+                      onChange={(e) => setOutputFormat(e.target.value as any)}
+                      className={`px-4 py-2 rounded-lg ${
+                        isDarkMode
+                          ? 'bg-gray-700 text-gray-200 border-gray-600'
+                          : 'bg-gray-100 text-gray-700 border-gray-300'
+                      } border focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                    >
+                      <option value="pdf">PDF Output</option>
+                      <option value="json">JSON Output</option>
+                      <option value="word">Word Output</option>
+                      <option value="image">Image Output</option>
+                    </select>
                   </div>
                 </div>
-                <button
-                  onClick={handleSendMessage}
-                  disabled={!inputValue.trim() || isTyping}
-                  className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-4 focus:ring-blue-500/20 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  <Send className="w-4 h-4" />
-                  <span className="hidden sm:inline">Send</span>
-                </button>
+
+                {/* Message Input */}
+                <div className="flex gap-4">
+                  <div className="flex-1 relative">
+                    <input
+                      type="text"
+                      value={inputValue}
+                      onChange={(e) => setInputValue(e.target.value)}
+                      onKeyPress={handleKeyPress}
+                      placeholder="Ask me about BRD requirements or upload a document for analysis..."
+                      className={`w-full px-4 py-3 pr-12 rounded-xl ${
+                        isDarkMode 
+                          ? 'bg-gray-700 border-gray-600 text-gray-200 placeholder-gray-400' 
+                          : 'bg-white border-gray-300'
+                      } border focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 focus:outline-none transition-all duration-200`}
+                      disabled={isTyping}
+                    />
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex gap-1">
+                      <FileText className={`w-4 h-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-400'}`} />
+                      <Code className={`w-4 h-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-400'}`} />
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleSendMessage}
+                    disabled={(!inputValue.trim() && !selectedFile) || isTyping}
+                    className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-4 focus:ring-blue-500/20 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    <Send className="w-4 h-4" />
+                    <span className="hidden sm:inline">Send</span>
+                  </button>
+                </div>
               </div>
               
               <div className="flex flex-wrap gap-2 mt-3">
